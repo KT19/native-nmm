@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from flax import linen as nn
 
 from nmm.models.config import ModelConfig
+from nmm.models.rms_norm import RMSNorm
 from nmm.models.rope import RoPECache
 
 
@@ -18,6 +19,11 @@ class SelfAttention(nn.Module):
     def setup(self) -> None:
         head_dim = self.config.d_model // self.config.n_heads
         self.qkv_proj = nn.Dense(3 * self.config.d_model, dtype=self.config.dtype, use_bias=False, name="qkv")
+
+        # Add Qk-Norm layers
+        self.q_norm = RMSNorm(head_dim, name="q_norm")
+        self.k_norm = RMSNorm(head_dim, name="k_norm")
+
         self.rope = RoPECache.build(
             max_seq_len=self.config.max_seq_len, head_dim=head_dim, theta=self.config.rope_theta
         )
@@ -48,6 +54,10 @@ class SelfAttention(nn.Module):
 
         q = self.rope.apply(q, positions=positions)
         k = self.rope.apply(k, positions=positions)
+
+        # Apply QK-norm
+        q = self.q_norm(q)
+        k = self.k_norm(k)
 
         scale = 1.0 / jnp.sqrt(jnp.array(head_dim, dtype=jnp.float32))
         scores = jnp.einsum("bhld,bhmd->bhlm", q.astype(jnp.float32), k.astype(jnp.float32)) * scale
