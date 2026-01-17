@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Scene } from "./Scene";
 import { Canvas } from "@react-three/fiber";
-import { Send } from "lucide-react";
+import { Send, ImagePlus, X } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -15,6 +15,7 @@ export default function ChatUI() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   //Upload
   const handleImageUpload = (file: File) => {
@@ -111,43 +112,102 @@ export default function ChatUI() {
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`flex ${
-              m.role === "user" ? "justify-end" : "justify-start"
-            }`}
+            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"
+              }`}
           >
             <div
-              className={`max-w-[80%] p-4 rounded-2xl font-mono ${
-                m.role === "user" ? "bg-blue-600 shadow-lg" : "bg-cyan-600"
-              }`}
+              className={`max-w-[80%] p-4 rounded-2xl font-mono ${m.role === "user" ? "bg-blue-600 shadow-lg" : "bg-cyan-600"
+                }`}
             >
               {m.content}
             </div>
           </div>
         ))}
         {loading && (
-          <div className="text-slate-400 animate-pulse text-sm">
-            AI is thinking...
+          <div className="flex justify-start">
+            <div className="bg-slate-700/80 backdrop-blur-sm text-slate-200 px-4 py-3 rounded-2xl animate-pulse text-sm">
+              AI is thinking...
+            </div>
           </div>
         )}
       </div>
 
       {/* Input Area */}
-      <footer className="z-10 p-6 bg-linear-to-t from-slate-400 to-transparent">
+      <footer className="z-10 p-6 bg-linear-to-t from-slate-900/80 via-slate-900/40 to-transparent">
         <div className="max-w-4xl mx-auto relative group">
+          {/* Image Preview */}
+          {imagePreview && (
+            <div className="absolute left-3 bottom-16 flex items-center gap-2 bg-slate-700/90 rounded-xl p-2 backdrop-blur-md">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="h-12 w-12 object-cover rounded-lg"
+              />
+              <button
+                onClick={() => {
+                  setImage(null);
+                  setImagePreview(null);
+                }}
+                className="p-1 bg-red-500/60 hover:bg-red-500 rounded-full transition"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImageUpload(file);
+            }}
+          />
+
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onPaste={handlePaste}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-            placeholder="Type a message..."
-            className="w-full bg-slate-600/80 border border-white/10 rounded-2xl p-4 pr-12 focus:ring-2 focus:ring-blue-500 outline-none resize-none h24 backdrop-blur-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Type a message... (Shift+Enter for new line)"
+            rows={1}
+            className="w-full bg-slate-800/90 rounded-2xl px-5 py-4 pr-28 text-slate-100 placeholder:text-slate-400 outline-none resize-none backdrop-blur-md transition-all duration-200 focus:bg-slate-800"
+            style={{ minHeight: "56px", maxHeight: "200px" }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = "56px";
+              target.style.height = Math.min(target.scrollHeight, 200) + "px";
+            }}
           />
-          <button
-            onClick={sendMessage}
-            className="absolute right-4 bottom-6 p-2 bg-blue-500 rounded-xl hover:bg-blue-400 transition"
-          >
-            <Send />
-          </button>
+
+          {/* Buttons Container */}
+          <div className="absolute right-3 bottom-3 flex items-center gap-2">
+            {/* Image Upload Button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 bg-slate-600/80 hover:bg-slate-500 rounded-xl transition-all duration-200 shadow-lg"
+              title="Upload image"
+            >
+              <ImagePlus size={20} />
+            </button>
+
+            {/* Send Button */}
+            <button
+              onClick={sendMessage}
+              disabled={loading || (!input.trim() && !image)}
+              className="p-2.5 bg-linear-to-r from-blue-500 to-cyan-500 rounded-xl hover:from-blue-400 hover:to-cyan-400 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg hover:shadow-blue-500/25"
+            >
+              <Send size={20} />
+            </button>
+          </div>
         </div>
       </footer>
     </div>
