@@ -5,6 +5,7 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
+import uvicorn
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +39,6 @@ model = NativeMultimodalLM(config)
 rng = jax.random.PRNGKey(0)
 dummy_text = jnp.zeros((1, config.max_text_len), dtype=jnp.int32)
 dummy_image = jnp.zeros((1, config.image_size, config.image_size, 3), dtype=jnp.float32)
-dummy_type = jnp.zeros((1, config.max_seq_len), dtype=jnp.int32)
 dummy_tmask = jnp.ones((1, config.max_text_len), dtype=bool)
 dummy_imask = jnp.zeros((1, n_patches), dtype=bool)
 
@@ -48,7 +48,6 @@ variables = model.init(
     images=dummy_image,
     text_attention_mask=dummy_tmask,
     image_attention_mask=dummy_imask,
-    token_type_ids=dummy_type,
     train=False,
 )
 
@@ -61,7 +60,7 @@ print("\nrestored\n")
 params = restored["params"]
 
 
-def generate_chat(
+def _generate_chat(
     params: Any,
     model: NativeMultimodalLM,
     tokenizer: Tokenizer,
@@ -108,22 +107,20 @@ def generate_chat(
             rng=rng,
         )
 
-    # filter out (prompt is eliminated)
-    response = response[len(prompt) :]
     return response
 
 
-def prepare_chat_input(image: UploadFile | None, chat_history: Any, user_input: str) -> str:
+def _prepare_chat_input(image: UploadFile | None, chat_history: Any, user_input: str) -> str:
     prompt = ""
 
-    prompt += "<bos>"
+    prompt += "<|bos|>"
 
     if image is not None:
-        prompt += "<img>"
+        prompt += "<|img|>"
 
     for msg in chat_history:
         role = msg["role"]
-        content = msg["user"]
+        content = msg["content"]
 
         if role == "user":
             prompt += "<|user|>"
@@ -138,6 +135,7 @@ def prepare_chat_input(image: UploadFile | None, chat_history: Any, user_input: 
     prompt += "<|user|>"
     prompt += user_input
     prompt += "\n"
+    prompt += "<|assistant|>"
 
     return prompt
 
@@ -147,14 +145,16 @@ async def chat_endpoint(image: UploadFile = File(None), history: str = Form(...)
     try:
         # 1. Process History
         chat_history = json.loads(history)
-        prompt = prepare_chat_input(image, chat_history, user_text)
+
+        prompt = _prepare_chat_input(image, chat_history, user_text)
+
         pil_image = None
         if image:
             img_bytes = await image.read()
             pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
         # inference
-        output_text = generate_chat(
+        output_text = _generate_chat(
             params=params,
             model=model,
             tokenizer=tokenizer,
@@ -174,3 +174,7 @@ async def chat_endpoint(image: UploadFile = File(None), history: str = Form(...)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
